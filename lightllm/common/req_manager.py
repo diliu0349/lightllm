@@ -15,7 +15,13 @@ class ReqManager:
         self.req_state[select_index] = 1
         self.can_use_req_size -= len(select_index)
         return select_index
-    
+
+    def copy(self, req_index, req_len):
+        free_token = []
+        for i in range(1, len(req_index)):
+            free_token.append(self.req_to_token_indexs[req_index[i]][req_len[0] - 1].item())
+            self.req_to_token_indexs[req_index[i]][:req_len[0]] = self.req_to_token_indexs[req_index[0]][:req_len[0]]
+
     def free(self, free_req_index, free_token_index):
         self.can_use_req_size += len(free_req_index)
         self.req_state[free_req_index] = 0
