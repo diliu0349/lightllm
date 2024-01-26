@@ -8,6 +8,7 @@ import triton
 
 from lightllm.models.llama.layer_weights.transformer_layer_weight import LlamaTransformerLayerWeight
 from lightllm.models.llama.triton_kernel.context_flashattention_nopad import context_attention_fwd
+from lightllm.models.llama.triton_kernel.pc_context_flashattention_nopad import pc_context_attention_fwd
 from lightllm.models.llama.triton_kernel.token_attention_nopad_att1 import token_att_fwd, token_att_fwd_int8k
 from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd
 from lightllm.models.llama.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2, token_att_fwd2_int8v
@@ -123,15 +124,31 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
         self, q, kv, infer_state: LlamaInferStateInfo, layer_weight, out=None
     ) -> torch.Tensor:
         o_tensor = torch.empty_like(q) if out is None else out
-        context_attention_fwd(
-            q.view(-1, self.tp_q_head_num_, self.head_dim_),
-            kv[:, 0 : self.tp_k_head_num_, :],
-            kv[:, self.tp_k_head_num_ : self.tp_k_head_num_ + self.tp_v_head_num_, :],
-            o_tensor.view(-1, self.tp_q_head_num_, self.head_dim_),
-            infer_state.b_start_loc,
-            infer_state.b_seq_len,
-            infer_state.max_len_in_batch,
-        )
+        if infer_state.use_prompt_cache:
+            pc_context_attention_fwd(
+                q.view(-1, self.tp_q_head_num_, self.head_dim_),
+                infer_state.mem_manager.kv_buffer[self.layer_num_][:, 0 : self.tp_k_head_num_, :],
+                infer_state.mem_manager.kv_buffer[self.layer_num_][
+                    :, self.tp_k_head_num_ : self.tp_k_head_num_ + self.tp_v_head_num_, :
+                ],
+                o_tensor.view(-1, self.tp_q_head_num_, self.head_dim_),
+                infer_state.b_req_idx,
+                infer_state.b_start_loc,
+                infer_state.b_seq_len,
+                infer_state.b_cache_size,
+                infer_state.max_len_in_batch,
+                infer_state.req_to_token_indexs
+            )        
+        else:
+            context_attention_fwd(
+                q.view(-1, self.tp_q_head_num_, self.head_dim_),
+                kv[:, 0 : self.tp_k_head_num_, :],
+                kv[:, self.tp_k_head_num_ : self.tp_k_head_num_ + self.tp_v_head_num_, :],
+                o_tensor.view(-1, self.tp_q_head_num_, self.head_dim_),
+                infer_state.b_start_loc,
+                infer_state.b_seq_len,
+                infer_state.max_len_in_batch,
+            )
         return o_tensor
 
     def _splitfuse_attention_kernel(
