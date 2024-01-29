@@ -52,14 +52,14 @@ class HttpServerManager:
         """
         初始化 prompt cache 特性, 这个地方的id 分配要于 router 中 的id 分配对齐
         """
+        gt = "[INST] <<SYS>>\nYou are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.\n\nIf a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.\n<</SYS>>\n\n"
         self.prompt_cache_reqs = []
         # 初始化 prompt cahce， 然后初始化请求队列
-        if self.args.splitfuse_mode:
-            id = -1 # id 从 -1， -2， .... 避免和正常的 id 占用
-            for prompt_cache_str in self.args.prompt_cache_strs:
-                prompt_ids = self.tokenizer.encode(prompt_cache_str)
-                self.prompt_cache_reqs.append((id, prompt_ids))
-                id -= 1
+        id = -1 # id 从 -1， -2， .... 避免和正常的 id 占用
+        for prompt_cache_str in self.args.prompt_cache_strs:
+            prompt_ids = self.tokenizer.encode(prompt_cache_str)
+            self.prompt_cache_reqs.append((id, prompt_ids))
+            id -= 1
         return
     
     def _find_prompt_cache_req(self, token_ids):
@@ -67,6 +67,9 @@ class HttpServerManager:
         prompt_cache_req_id = None
         for (req_id, prompt_ids) in self.prompt_cache_reqs:
             prompt_len = len(prompt_ids)
+            for i in range(prompt_len):
+                if token_ids[i] !=  prompt_ids[i]:
+                    break
             if len(token_ids) > prompt_len:
                 if token_ids[0 : prompt_len] == prompt_ids:
                     prompt_cache_len = prompt_len

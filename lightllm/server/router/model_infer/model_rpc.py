@@ -231,7 +231,6 @@ class ModelRpcServer(rpyc.Service):
             kwargs, run_reqs, not_run_reqs = prepare_prefill_inputs(batch, self.is_multimodal)
         else:
             kwargs, run_reqs, not_run_reqs = prepare_decode_inputs(batch)
-        
         if len(run_reqs) >= 1:
             logits = self.model.forward(**kwargs)
             next_token_ids, next_token_probs = sample(logits, run_reqs)

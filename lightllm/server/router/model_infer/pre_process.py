@@ -21,7 +21,7 @@ def prepare_prefill_inputs(batch:InferBatch, is_multimodal=False):
         assert req.req_status == ReqRunStatus.RUNNING
         # 当请求已经存在 cur_kv_len 不为 0 的时候，就不需要做全 prefill 操作了，
         # 说明是从 RERUNNING_FROM_KVKEEP 中 恢复的请求
-        if req.cur_kv_len != 0: 
+        if req.cur_kv_len == len(req.input_token_ids):
             not_run_reqs.append(req)
             continue
         

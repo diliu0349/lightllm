@@ -135,9 +135,9 @@ class LlamaTransformerLayerInfer(TransformerLayerInferTpl):
                 infer_state.b_req_idx,
                 infer_state.b_start_loc,
                 infer_state.b_seq_len,
-                infer_state.b_cache_size,
+                infer_state.b_prompt_cache_len,
                 infer_state.max_len_in_batch,
-                infer_state.req_to_token_indexs
+                infer_state.req_manager.req_to_token_indexs,
             )        
         else:
             context_attention_fwd(
