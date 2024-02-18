@@ -43,7 +43,8 @@ class Req:
         self.max_output_len = sample_params.max_new_tokens
         self.sample_params = sample_params
         self.multimodal_params = multimodal_params
-        self.output_ids = []
+        # self.output_ids = []
+        self.output_len = 0
         self.output_metadata_list = []
 
         self.req_status = ReqRunStatus.WAIT_IN_QUEUE
@@ -70,14 +71,14 @@ class Req:
         #     out.gen_metadata.update(self.output_metadata_list[-1])
         return out
     
-    def stop_sequences_matched(self):
-        for stop_token_ids in self.sample_params.stop_sequences:
-            stop_len = len(stop_token_ids)
-            if stop_len > 0:
-                if len(self.output_ids) >= stop_len:
-                    if all(self.output_ids[-(stop_len - i)] == stop_token_ids[i] for i in range(stop_len)):
-                        return True
-        return False
+    # def stop_sequences_matched(self):
+    #     for stop_token_ids in self.sample_params.stop_sequences:
+    #         stop_len = len(stop_token_ids)
+    #         if stop_len > 0:
+    #             if self.output_len >= stop_len:
+    #                 if all(self.output_ids[-(stop_len - i)] == stop_token_ids[i] for i in range(stop_len)):
+    #                     return True
+    #     return False
 
     def __repr__(self):
         return (f"request_id(n={self.request_id}, "
@@ -104,7 +105,7 @@ class NormalReq(Req):
         """
         普通continues batch调度模式, 先prefill 后 decode 的估计方式 的实现
         """
-        has_out_len = len(self.output_ids)
+        has_out_len = self.output_len
         if self.sample_params.ignore_eos:
             cur_max_new_token_len = self.max_output_len
         elif is_busy:
@@ -136,7 +137,7 @@ class NormalReq(Req):
         if self.req_status == ReqRunStatus.WAIT_IN_QUEUE:
             return self.input_len
         elif self.req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
-            return self.input_len + len(self.output_ids)
+            return self.input_len + self.output_len
         elif self.req_status == ReqRunStatus.PAUSED_AND_KVKEEP:
             return 0
         else:
@@ -152,7 +153,7 @@ class SplitFuseReq(Req):
         """
         splitfuse 调度模式的实现
         """
-        has_out_len = len(self.output_ids)
+        has_out_len = self.output_len
         if self.sample_params.ignore_eos:
             cur_max_new_token_len = self.max_output_len
         elif is_busy:
@@ -178,7 +179,7 @@ class SplitFuseReq(Req):
         splitfuse 调度模式的实现
         """
         if self.req_status == ReqRunStatus.RUNNING:
-            return min(self.input_len + len(self.output_ids) - self.cur_kv_len, self.splitfuse_block_size)
+            return min(self.input_len + self.output_len - self.cur_kv_len, self.splitfuse_block_size)
         else:
             assert False, "error state"
     
@@ -186,9 +187,9 @@ class SplitFuseReq(Req):
         if self.req_status == ReqRunStatus.WAIT_IN_QUEUE:
             return min(self.input_len - self.prompt_cache_len, self.splitfuse_block_size)
         elif self.req_status == ReqRunStatus.PAUSED_AND_OFFLOAD:
-            return min(self.input_len + len(self.output_ids) - self.prompt_cache_len, self.splitfuse_block_size)
+            return min(self.input_len + self.output_len - self.prompt_cache_len, self.splitfuse_block_size)
         elif self.req_status == ReqRunStatus.PAUSED_AND_KVKEEP:
-            return min(self.input_len + len(self.output_ids) - self.cur_kv_len, self.splitfuse_block_size)
+            return min(self.input_len + self.output_len - self.cur_kv_len, self.splitfuse_block_size)
         else:
             assert False, "error state"
 
@@ -232,16 +233,9 @@ class Batch:
             batch_input_tokens += req.input_len
         return batch_input_tokens
 
-    def mark_and_get_finished_req_and_preupdate_status(self, eos_id):
+    def get_finished_req_and_preupdate_status(self):
         unfinished_req_ids, finished_req_ids = [], []
         for req in self.reqs:
-            if req.stop_sequences_matched():
-                req.finish_status = FinishStatus.FINISHED_STOP
-            elif len(req.output_ids) >= 1 and req.output_ids[-1] == eos_id and req.sample_params.ignore_eos is False:
-                req.finish_status = FinishStatus.FINISHED_STOP
-            elif len(req.output_ids) >= req.max_output_len:
-                req.finish_status = FinishStatus.FINISHED_LENGTH
-
             if req.finish_status.is_finished():
                 finished_req_ids.append(req.request_id)
                 # 标记的时候，也同时更新一些这些请求被移除掉的更新量，有点dirty

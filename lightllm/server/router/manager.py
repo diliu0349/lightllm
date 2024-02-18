@@ -49,8 +49,8 @@ class RouterManager:
         self.is_splitfuse_mode = args.splitfuse_mode
         self.splitfuse_block_size = args.splitfuse_block_size
 
-        if self.is_splitfuse_mode and len(args.prompt_cache_strs) != 0:
-            self.tokenizer = get_tokenizer(self.model_weightdir, args.tokenizer_mode, args.trust_remote_code)
+        # if self.is_splitfuse_mode and len(args.prompt_cache_strs) != 0:
+        self.tokenizer = get_tokenizer(self.model_weightdir, args.tokenizer_mode, args.trust_remote_code)
 
         self.stats_tool = Stats(not args.disable_log_stats, args.log_stats_interval)
         return
@@ -76,7 +76,8 @@ class RouterManager:
                 "nccl_port" : self.args.nccl_port,
                 "is_splitfuse_mode" : self.is_splitfuse_mode,
                 "splitfuse_block_size" : self.splitfuse_block_size,
-                "return_all_prompt_logprobs" : self.args.return_all_prompt_logprobs
+                "return_all_prompt_logprobs" : self.args.return_all_prompt_logprobs,
+                "eos_id": self.tokenizer.eos_token_id
             }
             init_model_ret.append(self.model_rpcs[rank_id].init_model(kvargs))
 
@@ -228,7 +229,7 @@ class RouterManager:
                 req_to_out_status = ans[0]
 
             self._update_out_status_to_batch(batch, req_to_out_status)
-            unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status(self.eos_id)
+            unfinished_req_ids, finished_req_ids = batch.get_finished_req_and_preupdate_status()
             self._send_to_detokenization_proc(batch, req_to_out_status)
             batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
             await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
@@ -259,7 +260,7 @@ class RouterManager:
             req_to_out_status = ans[0]
 
         self._update_out_status_to_batch(batch, req_to_out_status)
-        unfinished_req_ids, finished_req_ids = batch.mark_and_get_finished_req_and_preupdate_status(self.eos_id)
+        unfinished_req_ids, finished_req_ids = batch.get_finished_req_and_preupdate_status()
         self._send_to_detokenization_proc(batch, req_to_out_status)
         batch.filter_out_finished_req(unfinished_req_ids, finished_req_ids)
         await self._handle_finish_req(batch, unfinished_req_ids, finished_req_ids)
@@ -322,7 +323,9 @@ class RouterManager:
             req.req_status = req_status
             req.cur_kv_len = cur_kv_len
             if new_token_id is not None:
-                req.output_ids.append(new_token_id)
+                req.output_len += 1
+                req.finish_status = FinishStatus(new_gen_metadata.pop("finish_status"))
+                # req.output_ids.append(new_token_id)
                 req.output_metadata_list.append(new_gen_metadata)
             new_batch_used_tokens += req.get_used_tokens()
             new_batch_decode_need_tokens += req.get_decode_need_tokens()

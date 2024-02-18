@@ -8,8 +8,7 @@ from typing import List, Dict
 from lightllm.common.req_manager import ReqManager
 from lightllm.common.mem_manager import MemoryManager
 from lightllm.utils.infer_utils import mark_start, mark_end
-from lightllm.server.io_struct import ReqRunStatus
-
+from lightllm.server.io_struct import ReqRunStatus, FinishStatus
 
 requests_mapping = {}
 
@@ -25,6 +24,10 @@ class InferSamplingParams:
         top_p: float = 1.0,
         top_k: int = -1,
         vocab_size: int = -1,
+        ignore_eos: bool = False,
+        max_new_tokens: int = 16,
+        stop_sequences: List = [],
+
     ) -> None:
         self.do_sample = do_sample
         self.presence_penalty = presence_penalty
@@ -35,6 +38,9 @@ class InferSamplingParams:
         self.top_k = top_k
         if self.top_k == -1:
             self.top_k = vocab_size
+        self.ignore_eos = ignore_eos
+        self.max_new_tokens = max_new_tokens
+        self.stop_sequences = stop_sequences
         return
 
 
@@ -65,6 +71,27 @@ class InferReq:
         self.prompt_cache_len = prompt_cache_len # 可以复用的一些公共 prompt 头对应的 kv cache 长度， prompt cache 目前只会在 splitfuse 模式下使用
         self.prompt_cache_req_id = prompt_cache_req_id # 对应的可复用的请求的 id，方便初始化的时候，将其 kv cache 复制到当前请求中
         return
+
+    def stop_sequences_matched(self):
+        for stop_token_ids in self.sampling_param.stop_sequences:
+            stop_len = len(stop_token_ids)
+            if stop_len > 0:
+                if len(self.input_token_ids) >= stop_len:
+                    if all(self.input_token_ids[-(stop_len - i)] == stop_token_ids[i] for i in range(stop_len)):
+                        return True
+        return False
+
+    def is_finished(self, eos_id):
+        if self.cur_kv_len - self.prompt_len >= self.sampling_param.max_new_tokens:
+            return FinishStatus.FINISHED_LENGTH
+
+        if not self.sampling_param.ignore_eos and self.input_token_ids[-1] == eos_id:
+            return FinishStatus.FINISHED_STOP
+        
+        if self.stop_sequences_matched():
+            return FinishStatus.FINISHED_STOP
+
+        return FinishStatus.NO_FINISH
 
 
 @dataclass

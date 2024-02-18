@@ -58,6 +58,7 @@ class ModelRpcServer(rpyc.Service):
         self.is_splitfuse_mode = kvargs.get("is_splitfuse_mode", False)
         self.splitfuse_block_size = kvargs.get("splitfuse_block_size", None)
         self.return_all_prompt_logprobs = kvargs.get("return_all_prompt_logprobs", False)
+        self.eos_id = kvargs.get("eos_id", False)
 
         self.cache = {}
         self.logger = init_logger(__name__)
@@ -231,7 +232,6 @@ class ModelRpcServer(rpyc.Service):
             kwargs, run_reqs, not_run_reqs = prepare_prefill_inputs(batch, self.is_multimodal)
         else:
             kwargs, run_reqs, not_run_reqs = prepare_decode_inputs(batch)
-        
         if len(run_reqs) >= 1:
             logits = self.model.forward(**kwargs)
             next_token_ids, next_token_probs = sample(logits, run_reqs)
@@ -243,9 +243,11 @@ class ModelRpcServer(rpyc.Service):
                 req_obj.cur_kv_len = len(req_obj.input_token_ids)
                 req_obj.input_token_ids.append(next_token_id)
                 req_obj.out_token_id_count[next_token_id] += 1
+                finish_status = req_obj.is_finished(self.eos_id)
                 metadata = {
                     'id': int(next_token_id),
                     'logprob': float(next_token_logprob),
+                    'finish_status': finish_status.value,
                 }
                 output_dict[req_obj.r_id] = (req_obj.req_status, req_obj.cur_kv_len, int(next_token_id), metadata) # 状态， cur_kv_len, token_id, metadata
 
@@ -280,11 +282,12 @@ class ModelRpcServer(rpyc.Service):
                 req_obj.cur_kv_len = len(req_obj.input_token_ids)
                 req_obj.input_token_ids.append(next_token_id)
                 req_obj.out_token_id_count[next_token_id] += 1
+                finish_status = req_obj.is_finished(self.eos_id)
                 metadata = {
                     'id': int(next_token_id),
                     'logprob': float(next_token_logprob),
+                    'finish_status': finish_status.value,
                 }
-
                 cur_ids: torch.Tensor = input_ids[start_loc : start_loc + seq_len]
                 cur_logits = prompt_all_logits[start_loc : start_loc + seq_len]
                 cur_logprobs = torch.log_softmax(cur_logits, dim=-1, dtype=torch.float)[0:-1, :]
@@ -328,9 +331,11 @@ class ModelRpcServer(rpyc.Service):
                 req_obj.cur_kv_len = len(req_obj.input_token_ids)
                 req_obj.input_token_ids.append(next_token_id)
                 req_obj.out_token_id_count[next_token_id] += 1
+                finish_status = req_obj.is_finished(self.eos_id)
                 metadata = {
                     'id': int(next_token_id),
                     'logprob': float(next_token_logprob),
+                    'finish_status': finish_status.value,
                 }
                 output_dict[req_obj.r_id] = (req_obj.req_status, req_obj.cur_kv_len, int(next_token_id), metadata) # 状态， cur_kv_len, token_id, metadata
             else:
@@ -341,9 +346,11 @@ class ModelRpcServer(rpyc.Service):
                     req_obj.cur_kv_len = old_input_token_size
                     req_obj.input_token_ids.append(next_token_id)
                     req_obj.out_token_id_count[next_token_id] += 1
+                    finish_status = req_obj.is_finished(self.eos_id)
                     metadata = {
                         'id': int(next_token_id),
                         'logprob': float(next_token_logprob),
+                        'finish_status': finish_status.value,
                     }
                     output_dict[req_obj.r_id] = (req_obj.req_status, req_obj.cur_kv_len, int(next_token_id), metadata)
                 elif req_obj.cur_kv_len + split_len < old_input_token_size:

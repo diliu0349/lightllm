@@ -26,7 +26,7 @@ class Sfj(Strategy):
 
     def ordering_reqs(self, batch: Batch):
         reqs = [req for req in batch.reqs]
-        return sorted(reqs, key=lambda req: req.max_output_len - len(req.output_ids), reverse=True)
+        return sorted(reqs, key=lambda req: req.max_output_len - req.output_len, reverse=True)
 
 class Hrnn(Strategy):
 
@@ -35,7 +35,7 @@ class Hrnn(Strategy):
     
     def ordering_reqs(self, batch: Batch):
         reqs = [req for req in batch.reqs]
-        return sorted(reqs, key=lambda req: (req.input_len + req.max_output_len - len(req.output_ids)) / req.input_len, reverse=True)
+        return sorted(reqs, key=lambda req: (req.input_len + req.max_output_len - req.output_len) / req.input_len, reverse=True)
 
 
 def select_paused_reqs(batch: Batch, strategy: Strategy, req_queue: ReqQueue, max_total_token_num):
