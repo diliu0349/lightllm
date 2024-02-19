@@ -102,7 +102,7 @@ class RouterManager:
             id = -1 # id 从 -1， -2， .... 避免和正常的 id 占用
             for prompt_cache_str in self.args.prompt_cache_strs:
                 prompt_ids = self.tokenizer.encode(prompt_cache_str)
-                req = NormalReq(id, prompt_ids, SamplingParams(stop_sequences=[]))
+                req = NormalReq(id, prompt_ids, SamplingParams(stop_sequences=[]), MultimodalParams())
                 self.prompt_cache_used_tokens += len(prompt_ids)
                 reqs.append(req)
                 id -= 1
