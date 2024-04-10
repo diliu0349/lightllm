@@ -109,6 +109,7 @@ async def generate(request: Request) -> Response:
     # Non-streaming case
     final_output = []
     count_output_tokens = 0
+    prompt_tokens = 0
     tokens = []
     prompt_logprobs = None
     prompt_token_ids = None
@@ -124,6 +125,7 @@ async def generate(request: Request) -> Response:
         if is_first_metadata:
             prompt_logprobs = metadata.get("prompt_logprobs", None)
             prompt_token_ids = metadata.get("prompt_token_ids", None)
+            prompt_tokens = metadata["prompt_tokens"]
             if prompt_logprobs is not None:
                 del metadata["prompt_logprobs"]
             if prompt_token_ids is not None:
@@ -142,6 +144,7 @@ async def generate(request: Request) -> Response:
         "count_output_tokens": count_output_tokens,
         "finish_reason": finish_status.get_finish_reason(),
     }
+    ret["prompt_tokens"] = prompt_tokens
     if return_details:
         ret["tokens"] = tokens
     if prompt_token_ids is not None:
